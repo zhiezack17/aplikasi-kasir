@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Loader2, Users, Phone, MapPin, Wallet, History, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Users, Phone, MapPin, Wallet, History, X, Send } from "lucide-react";
 import api, { formatRp, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -32,6 +32,9 @@ export default function Customers() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyCust, setHistoryCust] = useState(null);
   const [historyData, setHistoryData] = useState(null);
+
+  const [sendingReminderId, setSendingReminderId] = useState(null);
+  const [toast, setToast] = useState(null); // {type, text}
 
   const load = async () => {
     setLoading(true);
@@ -117,6 +120,21 @@ export default function Customers() {
     }
   };
 
+  const sendReminder = async (c) => {
+    if (!window.confirm(`Kirim reminder WhatsApp ke ${c.name} (${c.phone})?\n\nHutang: ${formatRp(c.debt)}`)) return;
+    setSendingReminderId(c.id);
+    setToast(null);
+    try {
+      const { data } = await api.post(`/customers/${c.id}/send-reminder`);
+      setToast({ type: "success", text: `✅ Reminder terkirim ke ${data.to}` });
+    } catch (e) {
+      setToast({ type: "error", text: formatApiError(e) });
+    } finally {
+      setSendingReminderId(null);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
+
   const totalDebt = items.reduce((s, c) => s + (c.debt || 0), 0);
   const fmtDate = (s) => {
     try {
@@ -158,7 +176,20 @@ export default function Customers() {
           <p className="text-sm mt-1">Tambah pelanggan untuk mencatat transaksi hutang</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <>
+          {toast && (
+            <div
+              className={`mb-4 px-4 py-3 rounded-xl border text-sm ${
+                toast.type === "success"
+                  ? "bg-brand-secondary/10 border-brand-secondary/30 text-brand-secondary"
+                  : "bg-red-50 border-red-200 text-red-700"
+              }`}
+              data-testid={`reminder-toast-${toast.type}`}
+            >
+              {toast.text}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {items.map((c) => (
             <div
               key={c.id}
@@ -217,29 +248,47 @@ export default function Customers() {
               )}
               {c.notes && <div className="text-xs text-brand-textMuted italic mb-3">&ldquo;{c.notes}&rdquo;</div>}
 
-              <div className={`rounded-xl p-3 flex items-center justify-between ${
+              <div className={`rounded-xl p-3 ${
                 c.debt > 0 ? "bg-red-50" : "bg-brand-secondary/10"
               }`}>
-                <div>
-                  <div className="text-xs uppercase tracking-wider font-bold text-brand-textMuted">Hutang</div>
-                  <div className={`text-lg font-bold ${c.debt > 0 ? "text-red-600" : "text-brand-secondary"}`}>
-                    {formatRp(c.debt)}
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className="text-xs uppercase tracking-wider font-bold text-brand-textMuted">Hutang</div>
+                    <div className={`text-lg font-bold ${c.debt > 0 ? "text-red-600" : "text-brand-secondary"}`}>
+                      {formatRp(c.debt)}
+                    </div>
                   </div>
+                  {c.debt > 0 && (
+                    <button
+                      onClick={() => openPay(c)}
+                      className="h-10 px-4 rounded-xl bg-brand-secondary hover:bg-brand-secondaryHover text-white font-semibold flex items-center gap-2 transition"
+                      data-testid={`pay-debt-${c.id}`}
+                    >
+                      <Wallet className="w-4 h-4" />
+                      Bayar Hutang
+                    </button>
+                  )}
                 </div>
-                {c.debt > 0 && (
+                {c.debt > 0 && c.phone && (
                   <button
-                    onClick={() => openPay(c)}
-                    className="h-10 px-4 rounded-xl bg-brand-secondary hover:bg-brand-secondaryHover text-white font-semibold flex items-center gap-2 transition"
-                    data-testid={`pay-debt-${c.id}`}
+                    onClick={() => sendReminder(c)}
+                    disabled={sendingReminderId === c.id}
+                    className="w-full h-9 rounded-lg bg-white border border-brand-secondary/40 text-brand-secondary hover:bg-brand-secondary hover:text-white font-semibold text-sm flex items-center justify-center gap-2 transition disabled:opacity-50"
+                    data-testid={`reminder-${c.id}`}
                   >
-                    <Wallet className="w-4 h-4" />
-                    Bayar Hutang
+                    {sendingReminderId === c.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    Kirim Reminder WhatsApp
                   </button>
                 )}
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       {/* Add/Edit Customer Dialog */}

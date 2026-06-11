@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 3 (Fonnte WhatsApp integration) tested end-to-end. 15/15 backend pytest cases pass and all 10 frontend UI checks pass. Settings RBAC, token persistence/masking, send-reminder error paths, normalize_phone helper, and background-task safety when token is empty are all verified. Found 1 issue: 502 errors from the backend get rewritten by the Cloudflare/ingress proxy into a generic HTML 502 page, so users see 'The origin web server returned an invalid or incomplete response to Cloudflare' instead of the friendly Bahasa Indonesia message from FastAPI when Fonnte rejects a send.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/settings/test-whatsapp & POST /api/customers/:id/send-reminder", "issue": "HTTPException(status_code=502) is intercepted by ingress/Cloudflare and replaced with HTML, so frontend cannot read backend's detail message. Recommend returning 400 (or 200 with success:false + detail) so the user sees the actual 'Gagal: <reason>' text."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Test WhatsApp + Send Reminder", "issue": "When Fonnte returns invalid token, backend responds 502 but Cloudflare serves a generic 502 HTML page; toast then shows Cloudflare text rather than backend detail. Tied to backend issue above.", "affected_selectors": ["[data-testid='settings-error']", "[data-testid='reminder-toast-error']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_settings.py",
+    "/app/test_reports/pytest/pytest_iter3.xml"
+  ],
+  "action_items": [
+    "Change HTTPException(status_code=502, ...) to status_code=400 in send_reminder() and test_whatsapp() so ingress passes backend JSON detail through to the frontend. This will make 'Gagal: <fonnte reason>' visible to the user instead of the Cloudflare HTML page.",
+    "Optional: pre-existing iter-2 test (test_categories_endpoint_works) now fails because user-created 'Makanan' category exists; either remove that assertion or scope it to TEST_ prefix only."
+  ],
+  "critical_code_review_comments": [
+    "whatsapp.send_whatsapp correctly never raises - good defensive design.",
+    "background_tasks.add_task is used for auto notifications (debt create + pay) so HTTP response is not blocked - verified pay_debt and create_transaction return 200 instantly even when token is empty.",
+    "Manual reminder uses await directly (not background task) - matches spec to give caller immediate feedback.",
+    "Token masking uses bullet character correctly; ensures first 4 + last 4 are visible only.",
+    "Settings cache (in-memory _settings_cache) is loaded from DB on startup AND updated on PUT - good. set_wa_settings call in update_settings correctly only updates fields present in the request.",
+    "RBAC: GET/PUT /settings require admin via require_admin dependency - tested 403 for cashier on both."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin/admin123, kasir/kasir123 (read from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Tests create TEST_-prefixed categories/products/customers and clean them up in session-scoped autouse fixtures. Token is reset to empty + shop_name reset to 'Warung Kopi' after tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 3 testing focused on Fonnte WhatsApp integration. New test file /app/backend/tests/test_whatsapp_settings.py covers normalize_phone, /api/settings GET/PUT RBAC, /api/settings/test-whatsapp validation, /api/customers/:id/send-reminder (no-phone/no-debt/missing-token/404), and background task safety. Iter 2 regression test test_categories_endpoint_works has a stale assumption (assumes no manually-added categories named 'Makanan'); not iter-3 regression. FONNTE_TOKEN should remain empty in .env/db for production behavior; tests reset it.",
+  "rca_of_issue": "Issue: 502 responses from the backend HTTPException are not reaching the browser intact. RCA: The Kubernetes ingress/Cloudflare in front of the preview environment treats any 5xx from the upstream as an origin failure and rewrites the response body to its own HTML error template, dropping FastAPI's JSON {detail: '...'} payload. Mitigation: use 4xx codes (e.g., 400 or 422) for downstream provider failures since these are user/config errors, not server faults. Alternatively return 200 with {success:false, reason:...} and let the client surface the message. This matches how 'missing_token' already returns 400 and reaches the user correctly."
+}

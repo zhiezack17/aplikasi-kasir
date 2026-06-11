@@ -10,6 +10,7 @@ import Categories from "@/pages/Categories";
 import History from "@/pages/History";
 import Reports from "@/pages/Reports";
 import Customers from "@/pages/Customers";
+import Settings from "@/pages/Settings";
 
 function App() {
   return (
@@ -49,6 +50,14 @@ function App() {
                 element={
                   <ProtectedRoute adminOnly>
                     <Reports />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <Settings />
                   </ProtectedRoute>
                 }
               />

@@ -12,10 +12,12 @@ import jwt
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, BackgroundTasks, status
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, ConfigDict
+
+from whatsapp import send_whatsapp, msg_debt_created, msg_debt_paid, msg_reminder, set_settings as set_wa_settings, get_token as get_wa_token, get_shop_name
 
 
 # ============ Setup ============
@@ -302,7 +304,7 @@ async def _generate_order_number() -> str:
     return f"{prefix}-{count + 1:04d}"
 
 @api_router.post("/transactions")
-async def create_transaction(payload: TransactionCreate, user: dict = Depends(get_current_user)):
+async def create_transaction(payload: TransactionCreate, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     if not payload.items:
         raise HTTPException(status_code=400, detail="Keranjang kosong")
 
@@ -368,6 +370,15 @@ async def create_transaction(payload: TransactionCreate, user: dict = Depends(ge
             {"id": payload.customer_id},
             {"$inc": {"debt": total}}
         )
+        # Schedule WhatsApp notification (non-blocking)
+        if customer.get("phone"):
+            new_debt = float(customer.get("debt", 0)) + total
+            shop = get_shop_name()
+            background_tasks.add_task(
+                send_whatsapp,
+                customer["phone"],
+                msg_debt_created(customer["name"], order_number, total, new_debt, shop),
+            )
 
     # Decrement stock (best-effort)
     for it in items_clean:
@@ -444,7 +455,7 @@ async def delete_customer(cust_id: str, _admin: dict = Depends(require_admin)):
     return {"message": "Pelanggan dihapus"}
 
 @api_router.post("/customers/{cust_id}/pay-debt")
-async def pay_debt(cust_id: str, payload: DebtPaymentCreate, user: dict = Depends(get_current_user)):
+async def pay_debt(cust_id: str, payload: DebtPaymentCreate, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     customer = await db.customers.find_one({"id": cust_id}, {"_id": 0})
     if not customer:
         raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
@@ -469,7 +480,98 @@ async def pay_debt(cust_id: str, payload: DebtPaymentCreate, user: dict = Depend
 
     await db.customers.update_one({"id": cust_id}, {"$inc": {"debt": -payload.amount}})
     updated = await db.customers.find_one({"id": cust_id}, {"_id": 0})
+
+    # WhatsApp notification
+    if customer.get("phone"):
+        remaining = float(updated.get("debt", 0))
+        shop = get_shop_name()
+        background_tasks.add_task(
+            send_whatsapp,
+            customer["phone"],
+            msg_debt_paid(customer["name"], payload.amount, remaining, shop),
+        )
+
     return {"payment": payment.model_dump(), "customer": updated}
+
+
+@api_router.post("/customers/{cust_id}/send-reminder")
+async def send_reminder(cust_id: str, user: dict = Depends(get_current_user)):
+    """Manually trigger a WhatsApp debt reminder."""
+    customer = await db.customers.find_one({"id": cust_id}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+    if not customer.get("phone"):
+        raise HTTPException(status_code=400, detail="Pelanggan tidak memiliki No. HP")
+    debt = float(customer.get("debt", 0))
+    if debt <= 0:
+        raise HTTPException(status_code=400, detail="Pelanggan tidak memiliki hutang")
+
+    shop = get_shop_name()
+    result = await send_whatsapp(customer["phone"], msg_reminder(customer["name"], debt, shop))
+    if not result.get("status"):
+        reason = result.get("reason") or result.get("detail") or "unknown"
+        # Surface user-friendly errors
+        if reason == "missing_token":
+            raise HTTPException(status_code=400, detail="WhatsApp belum dikonfigurasi. Mohon admin set Token Fonnte di menu Pengaturan.")
+        raise HTTPException(status_code=502, detail=f"Gagal mengirim WhatsApp: {reason}")
+    return {"success": True, "detail": result.get("detail", "Pesan terkirim"), "to": customer["phone"]}
+
+
+# ============ Settings ============
+class SettingsPayload(BaseModel):
+    fonnte_token: Optional[str] = None
+    shop_name: Optional[str] = None
+
+@api_router.get("/settings")
+async def get_settings_endpoint(_admin: dict = Depends(require_admin)):
+    """Returns current WA settings (token masked for safety)."""
+    token = get_wa_token()
+    shop = get_shop_name()
+    masked = ""
+    if token:
+        masked = token[:4] + "•" * max(0, len(token) - 8) + token[-4:] if len(token) > 8 else "••••"
+    return {
+        "fonnte_token_set": bool(token),
+        "fonnte_token_masked": masked,
+        "shop_name": shop,
+    }
+
+@api_router.put("/settings")
+async def update_settings(payload: SettingsPayload, _admin: dict = Depends(require_admin)):
+    update = {}
+    if payload.fonnte_token is not None:
+        update["FONNTE_TOKEN"] = payload.fonnte_token.strip()
+    if payload.shop_name is not None:
+        update["SHOP_NAME"] = payload.shop_name.strip() or "Warung Kopi"
+    if update:
+        await db.settings.update_one(
+            {"_id": "app_settings"},
+            {"$set": update},
+            upsert=True,
+        )
+        set_wa_settings(
+            token=update.get("FONNTE_TOKEN") if "FONNTE_TOKEN" in update else None,
+            shop_name=update.get("SHOP_NAME") if "SHOP_NAME" in update else None,
+        )
+    return {"success": True}
+
+@api_router.post("/settings/test-whatsapp")
+async def test_whatsapp(payload: dict, _admin: dict = Depends(require_admin)):
+    """Send a test WhatsApp message."""
+    phone = (payload or {}).get("phone", "").strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="Nomor HP wajib diisi")
+    shop = get_shop_name()
+    result = await send_whatsapp(
+        phone,
+        f"✅ Test WhatsApp dari *{shop}*.\n\nIntegrasi Fonnte berhasil! 🎉"
+    )
+    if not result.get("status"):
+        reason = result.get("reason") or result.get("detail") or "unknown"
+        if reason == "missing_token":
+            raise HTTPException(status_code=400, detail="Token Fonnte belum disimpan")
+        raise HTTPException(status_code=502, detail=f"Gagal: {reason}")
+    return {"success": True, "detail": result.get("detail", "Pesan terkirim")}
 
 @api_router.get("/customers/{cust_id}/transactions")
 async def customer_transactions(cust_id: str, _user: dict = Depends(get_current_user)):
@@ -506,7 +608,6 @@ async def daily_report(date: Optional[str] = None, user: dict = Depends(get_curr
     top_products = sorted(product_sales.values(), key=lambda x: x["quantity"], reverse=True)[:5]
 
     # Outstanding debt across all customers (admin only meaningful)
-    debt_query = {}
     outstanding_debt = 0.0
     customers_with_debt = 0
     if user.get("role") == "admin":
@@ -588,6 +689,14 @@ async def seed_data():
     await db.customers.create_index("name")
     await db.customers.create_index("phone")
     await db.debt_payments.create_index([("created_at", -1)])
+
+    # Load app settings (Fonnte token + shop name) from DB
+    settings_doc = await db.settings.find_one({"_id": "app_settings"})
+    if settings_doc:
+        set_wa_settings(
+            token=settings_doc.get("FONNTE_TOKEN"),
+            shop_name=settings_doc.get("SHOP_NAME"),
+        )
 
     # Seed admin
     admin_username = os.environ.get("ADMIN_USERNAME", "admin").lower()

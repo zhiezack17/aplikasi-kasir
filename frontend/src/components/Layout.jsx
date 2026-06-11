@@ -7,6 +7,7 @@ import {
   History,
   BarChart3,
   Users,
+  Settings as SettingsIcon,
   LogOut,
   Menu,
   X,
@@ -44,6 +45,7 @@ function NavMenu({ isAdmin, onItemClick }) {
           <NavItem to="/reports" icon={BarChart3} label="Laporan" testid="nav-reports" onClick={onItemClick} />
           <NavItem to="/products" icon={Package} label="Produk" testid="nav-products" onClick={onItemClick} />
           <NavItem to="/categories" icon={Tags} label="Kategori" testid="nav-categories" onClick={onItemClick} />
+          <NavItem to="/settings" icon={SettingsIcon} label="Pengaturan" testid="nav-settings" onClick={onItemClick} />
         </>
       )}
     </nav>
