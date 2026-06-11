@@ -30,32 +30,31 @@ User (Bahasa Indonesia): "coba buat aplikasi kasir yang bisa di gunakan di kompu
 - Role-based access: admin sees Laporan/Produk/Kategori menus; kasir does not.
 - Stock auto-decrements on transaction.
 
-## Implementation Status (Implemented ✅ — 2026-01)
+## Implementation Status (Implemented ✅)
 
-### Backend (`/app/backend/server.py`)
-- ✅ JWT auth (`/api/auth/login`, `/auth/logout`, `/auth/me`) — bcrypt + 24h token
-- ✅ Seeded users (admin + kasir, idempotent)
-- ✅ Seeded 4 categories (Kopi, Non-Kopi, Pastry, Makanan) & 10 products on first run
-- ✅ Categories CRUD with admin-only write + delete protection (when in use)
-- ✅ Products CRUD with admin-only write
-- ✅ Transactions: server-side total recompute, stock decrement, change calculation for cash
-- ✅ Daily Report: revenue, orders, payment breakdown, top 5 products, 7-day trend
-- ✅ Role-based filtering (cashier sees only own transactions)
+### v1 (2026-01) — MVP
+- ✅ JWT auth, admin/kasir seed, idempotent
+- ✅ Categories CRUD (admin write) + Products CRUD (admin write)
+- ✅ Transactions with 10% tax, stock decrement
+- ✅ Daily Report with KPI, 7-day trend, top products
+- ✅ Login + POS (search, categories, cart) + Payment dialog (Cash/Transfer/QRIS) + Receipt
+- ✅ Products/Categories/History/Reports admin pages
+- ✅ Mobile responsive (FAB cart sheet)
+- ✅ Role-based sidebar
+- ✅ Backend 17/17 tests pass + frontend e2e pass
 
-### Frontend
-- ✅ Login page (split-screen + demo credentials hints)
-- ✅ POS page: search, category pills, product grid, cart sidebar (desktop) / FAB+sheet (mobile)
-- ✅ Payment dialog: Cash (quick-amount buttons + change), Transfer (bank info), QRIS (auto QR)
-- ✅ Receipt dialog post-payment
-- ✅ Product management (admin) — table + image preview + dialog form
-- ✅ Category management (admin)
-- ✅ Transaction history with date filter + detail dialog
-- ✅ Reports page with KPI cards + 7-day bar chart + top products
-- ✅ Role-based sidebar; mobile drawer; logout
-
-### Testing
-- ✅ Backend pytest: 17/17 pass (`/app/backend/tests/test_pos_backend.py`)
-- ✅ Frontend Playwright: all critical flows pass (login, POS, payment, role visibility, history, reports)
+### v2 (2026-01) — Customer & Debt Management
+- ✅ **Removed all demo seed data** (sample categories + products) — starts empty
+- ✅ **Customer collection** with name + phone + address + notes + debt (running balance)
+- ✅ Customer CRUD endpoints (admin write, all authenticated read) + delete blocked if debt > 0
+- ✅ **"Hutang" payment method** added — requires `customer_id`, increments customer.debt
+- ✅ **Pay Debt endpoint** `/api/customers/:id/pay-debt` — partial/full, tracked in `debt_payments` collection
+- ✅ Customer transaction & payment history endpoint
+- ✅ Reports `outstanding_debt` + `customers_with_debt` KPIs
+- ✅ Frontend **Pelanggan page** with debt card, Bayar Hutang dialog (Bayar Lunas/Setengah quick buttons), customer history
+- ✅ POS payment dialog now 4 methods (Tunai/Transfer/QRIS/Hutang) with customer picker + quick-add
+- ✅ History page shows HUTANG badge + customer name
+- ✅ Backend 20/20 new tests pass + frontend e2e pass
 
 ## Backlog / Future Enhancements
 ### P1
