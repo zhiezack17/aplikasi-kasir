@@ -56,6 +56,18 @@ User (Bahasa Indonesia): "coba buat aplikasi kasir yang bisa di gunakan di kompu
 - ✅ History page shows HUTANG badge + customer name
 - ✅ Backend 20/20 new tests pass + frontend e2e pass
 
+### v3 (2026-01) — WhatsApp Integration (Fonnte)
+- ✅ **Fonnte WhatsApp API** integrated (`whatsapp.py` module with normalize_phone + send_whatsapp helper)
+- ✅ **Auto-notifications** on debt transaction created (background task)
+- ✅ **Auto-notifications** on debt payment received (background task)
+- ✅ **Manual "Kirim Reminder WhatsApp" button** on customer cards (immediate send, sync)
+- ✅ **Settings page** (admin only) — store Fonnte token + shop name in MongoDB (no redeploy needed)
+- ✅ Test WhatsApp button to verify integration
+- ✅ Resilient: missing token / Fonnte errors don't break business transactions (always 400 not 502 for Cloudflare passthrough)
+- ✅ Indonesian phone normalization (0812... → 62812...)
+- ✅ Default professional Bahasa Indonesia message templates
+- ✅ Backend 15/15 new tests pass + frontend e2e pass
+
 ## Backlog / Future Enhancements
 ### P1
 - [ ] Print/Save receipt as PDF or thermal printer support

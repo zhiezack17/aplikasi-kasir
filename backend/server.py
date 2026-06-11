@@ -513,7 +513,7 @@ async def send_reminder(cust_id: str, user: dict = Depends(get_current_user)):
         # Surface user-friendly errors
         if reason == "missing_token":
             raise HTTPException(status_code=400, detail="WhatsApp belum dikonfigurasi. Mohon admin set Token Fonnte di menu Pengaturan.")
-        raise HTTPException(status_code=502, detail=f"Gagal mengirim WhatsApp: {reason}")
+        raise HTTPException(status_code=400, detail=f"Gagal mengirim WhatsApp: {reason}")
     return {"success": True, "detail": result.get("detail", "Pesan terkirim"), "to": customer["phone"]}
 
 
@@ -570,7 +570,7 @@ async def test_whatsapp(payload: dict, _admin: dict = Depends(require_admin)):
         reason = result.get("reason") or result.get("detail") or "unknown"
         if reason == "missing_token":
             raise HTTPException(status_code=400, detail="Token Fonnte belum disimpan")
-        raise HTTPException(status_code=502, detail=f"Gagal: {reason}")
+        raise HTTPException(status_code=400, detail=f"Gagal: {reason}")
     return {"success": True, "detail": result.get("detail", "Pesan terkirim")}
 
 @api_router.get("/customers/{cust_id}/transactions")
