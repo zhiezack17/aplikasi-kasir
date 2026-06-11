@@ -1,0 +1,94 @@
+{
+  "theme": "light",
+  "archetype": "1_organic_earthy",
+  "domain": "restaurant_cafe_pos",
+  "design_philosophy": "Warm, tactile, and frictionless. The interface must feel like a natural extension of a cozy cafe. Using generous spacing, soft geometry, and earthy tones to reduce cognitive load during busy shifts.",
+  "colors": {
+    "background": "#F7F5F0",
+    "surface": "#FFFFFF",
+    "surface_secondary": "#FAF9F6",
+    "primary": "#D47963",
+    "primary_hover": "#C26852",
+    "primary_foreground": "#FFFFFF",
+    "secondary": "#5C715E",
+    "secondary_hover": "#4D5F4E",
+    "accent_warning": "#D9984A",
+    "text_primary": "#36312D",
+    "text_secondary": "#7A726E",
+    "border": "#EAE6DF",
+    "border_focus": "#D47963"
+  },
+  "typography": {
+    "font_family_heading": "Manrope",
+    "font_family_body": "Manrope",
+    "scales": {
+      "h1": "text-4xl tracking-tight font-bold",
+      "h2": "text-2xl tracking-tight font-bold",
+      "h3": "text-xl font-semibold",
+      "body": "text-base font-medium",
+      "label": "text-xs tracking-[0.05em] uppercase font-bold text-[#7A726E]"
+    }
+  },
+  "layout_and_spacing": {
+    "philosophy": "Generous padding. Elements should never feel cramped.",
+    "container_padding": "p-6 md:p-8",
+    "border_radius": {
+      "card": "rounded-2xl",
+      "button": "rounded-xl",
+      "input": "rounded-xl",
+      "pill": "rounded-full"
+    },
+    "shadows": {
+      "card_subtle": "shadow-[0_4px_24px_rgba(54,49,45,0.04)]",
+      "drawer_heavy": "shadow-[-8px_0_32px_rgba(54,49,45,0.08)]",
+      "button_glow": "shadow-[0_4px_16px_rgba(212,121,99,0.25)]"
+    }
+  },
+  "components_strategy": {
+    "product_card": "Vertical layout. Image on top (aspect-square, rounded-t-2xl, object-cover). Body with title and price (Rp). Subtle border, changes to Primary color border on hover/active. Clicking the whole card adds to cart.",
+    "cart_sidebar": "Desktop: Fixed right panel. White background, border-left. Divided into 3 vertical flex areas: Header (Order Info), Middle (Scrollable list of selected items with + / - quantity controls), Bottom (Fixed summary, subtotal, tax, massive Primary Pay button).",
+    "category_pills": "Horizontal scrollable flex container. Active: bg-primary text-white. Inactive: bg-white text-text_secondary border border-border.",
+    "login_page": "Split screen layout. Left: high-res cafe aesthetic image with 20% black overlay and brand welcome text. Right: clean, centered login form (username/password) in a card with subtle shadow.",
+    "payment_modal": "Shadcn Dialog. Large touch-friendly options: Cash, Transfer, QRIS. QRIS selection shows a generated QR code image.",
+    "mobile_optimizations": "Products in 2-column grid. Cart is hidden behind a fixed bottom floating action button (FAB) 'View Cart - Rp Total' which opens a Shadcn Sheet from bottom. Touch targets min 48px height."
+  },
+  "icons_and_assets": {
+    "icon_library": "@phosphor-icons/react",
+    "icon_installation": "yarn add @phosphor-icons/react",
+    "style": "Regular weight, 24px default size, rounded caps."
+  },
+  "image_urls": {
+    "login_background": {
+      "url": "https://images.unsplash.com/photo-1554118811-1e0d58224f24?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHw0fHxjYWZlJTIwaW50ZXJpb3IlMjBhZXN0aGV0aWN8ZW58MHx8fHwxNzgxMjEwODAxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Warm interior of a coffee shop, ideal for the split-screen login page background."
+    },
+    "product_coffee_1": {
+      "url": "https://images.unsplash.com/photo-1559001724-fbad036dbc9e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHwzfHxsYXR0ZSUyMGFydCUyMGNvZmZlZXxlbnwwfHx8fDE3ODEwODM0MjB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Cafe latte art for a coffee product."
+    },
+    "product_coffee_2": {
+      "url": "https://images.unsplash.com/photo-1593443320739-77f74939d0da?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHwyfHxsYXR0ZSUyMGFydCUyMGNvZmZlZXxlbnwwfHx8fDE3ODEwODM0MjB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "White ceramic cup with coffee on wooden table."
+    },
+    "product_pastry_1": {
+      "url": "https://images.unsplash.com/photo-1555507036-ab1f4038808a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwzfHxwYXN0cnklMjBjcm9pc3NhbnR8ZW58MHx8fHwxNzgxMjEwODAxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Two brown croissants for a pastry product."
+    },
+    "qris_placeholder": {
+      "url": "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=ExampleQRISPayment&bgcolor=FFFFFF",
+      "description": "Generated QR code for QRIS payment modal."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Install `@phosphor-icons/react` for icons.",
+    "Configure Tailwind with `Manrope` font from Google Fonts. Extend the color palette exactly as specified in `colors`.",
+    "For the POS Dashboard layout, wrap the top-level container in `h-screen overflow-hidden` to avoid window scrolling. Use CSS Grid for desktop: sidebar navigation (col-span-1 or fixed w-20), main product area (flex-1), and cart panel (w-[400px]).",
+    "Inner sections (product grid, cart items list) MUST have `overflow-y-auto`.",
+    "Implement currency formatting for IDR consistently: `Rp {amount.toLocaleString('id-ID')}`.",
+    "The cart items list must clearly show quantity adjusters (+ and - buttons) taking up substantial touch area (e.g., `w-8 h-8`).",
+    "For mobile view (md:hidden), the Cart Panel should be rendered inside a Shadcn Sheet that pops up from the bottom, triggered by a sticky bottom FAB.",
+    "Ensure the QRIS payment tab clearly shows the QR code centered with instructions to scan.",
+    "Do NOT use thick card borders unless specified. Rely on subtle shadows (`shadow-card_subtle`) and backgrounds for elevation.",
+    "Add `data-testid` to all actionable items: login-form-submit-button, category-[id], product-[id], add-to-cart-[id], checkout-btn, pay-cash-btn, pay-qris-btn."
+  ]
+}
