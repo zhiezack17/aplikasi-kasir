@@ -6,6 +6,7 @@ import {
   Tags,
   History,
   BarChart3,
+  Users,
   LogOut,
   Menu,
   X,
@@ -37,6 +38,7 @@ function NavMenu({ isAdmin, onItemClick }) {
     <nav className="flex flex-col gap-1.5 flex-1">
       <NavItem to="/" end icon={ShoppingCart} label="Kasir" testid="nav-pos" onClick={onItemClick} />
       <NavItem to="/history" icon={History} label="Riwayat" testid="nav-history" onClick={onItemClick} />
+      <NavItem to="/customers" icon={Users} label="Pelanggan" testid="nav-customers" onClick={onItemClick} />
       {isAdmin && (
         <>
           <NavItem to="/reports" icon={BarChart3} label="Laporan" testid="nav-reports" onClick={onItemClick} />

@@ -128,9 +128,10 @@ class TransactionItem(BaseModel):
 
 class TransactionCreate(BaseModel):
     items: List[TransactionItem]
-    payment_method: Literal["cash", "transfer", "qris"]
+    payment_method: Literal["cash", "transfer", "qris", "debt"]
     cash_received: Optional[float] = None
     notes: Optional[str] = ""
+    customer_id: Optional[str] = None
 
 class Transaction(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -142,6 +143,41 @@ class Transaction(BaseModel):
     payment_method: str
     cash_received: Optional[float] = None
     change: Optional[float] = None
+    notes: Optional[str] = ""
+    customer_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    cashier_id: str
+    cashier_name: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# Customer models
+class Customer(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    phone: Optional[str] = ""
+    address: Optional[str] = ""
+    notes: Optional[str] = ""
+    debt: float = 0.0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CustomerCreate(BaseModel):
+    name: str
+    phone: Optional[str] = ""
+    address: Optional[str] = ""
+    notes: Optional[str] = ""
+
+class DebtPaymentCreate(BaseModel):
+    amount: float
+    method: Literal["cash", "transfer", "qris"] = "cash"
+    notes: Optional[str] = ""
+
+class DebtPayment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    customer_id: str
+    customer_name: str
+    amount: float
+    method: str
     notes: Optional[str] = ""
     cashier_id: str
     cashier_name: str
@@ -270,6 +306,15 @@ async def create_transaction(payload: TransactionCreate, user: dict = Depends(ge
     if not payload.items:
         raise HTTPException(status_code=400, detail="Keranjang kosong")
 
+    # Validate customer for debt payment
+    customer = None
+    if payload.payment_method == "debt":
+        if not payload.customer_id:
+            raise HTTPException(status_code=400, detail="Pelanggan wajib dipilih untuk pembayaran hutang")
+        customer = await db.customers.find_one({"id": payload.customer_id}, {"_id": 0})
+        if not customer:
+            raise HTTPException(status_code=400, detail="Pelanggan tidak ditemukan")
+
     # Recompute subtotals from server for safety
     items_clean = []
     subtotal = 0.0
@@ -308,13 +353,21 @@ async def create_transaction(payload: TransactionCreate, user: dict = Depends(ge
         cash_received=payload.cash_received,
         change=change,
         notes=payload.notes or "",
+        customer_id=payload.customer_id if customer else None,
+        customer_name=customer["name"] if customer else None,
         cashier_id=user["id"],
         cashier_name=user["name"],
     )
     doc = tx.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
-    # Convert nested items (already dicts via model_dump)
     await db.transactions.insert_one(doc)
+
+    # Increment customer debt if payment is debt
+    if payload.payment_method == "debt" and customer:
+        await db.customers.update_one(
+            {"id": payload.customer_id},
+            {"$inc": {"debt": total}}
+        )
 
     # Decrement stock (best-effort)
     for it in items_clean:
@@ -349,6 +402,82 @@ async def get_transaction(tx_id: str, user: dict = Depends(get_current_user)):
     return tx
 
 
+# ============ Customers ============
+@api_router.get("/customers")
+async def list_customers(_user: dict = Depends(get_current_user)):
+    customers = await db.customers.find({}, {"_id": 0}).sort("name", 1).to_list(2000)
+    return customers
+
+@api_router.get("/customers/{cust_id}")
+async def get_customer(cust_id: str, _user: dict = Depends(get_current_user)):
+    customer = await db.customers.find_one({"id": cust_id}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+    return customer
+
+@api_router.post("/customers")
+async def create_customer(payload: CustomerCreate, _user: dict = Depends(get_current_user)):
+    if not payload.name.strip():
+        raise HTTPException(status_code=400, detail="Nama pelanggan wajib diisi")
+    customer = Customer(**payload.model_dump())
+    doc = customer.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.customers.insert_one(doc)
+    return customer.model_dump()
+
+@api_router.put("/customers/{cust_id}")
+async def update_customer(cust_id: str, payload: CustomerCreate, _admin: dict = Depends(require_admin)):
+    res = await db.customers.update_one({"id": cust_id}, {"$set": payload.model_dump()})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+    customer = await db.customers.find_one({"id": cust_id}, {"_id": 0})
+    return customer
+
+@api_router.delete("/customers/{cust_id}")
+async def delete_customer(cust_id: str, _admin: dict = Depends(require_admin)):
+    customer = await db.customers.find_one({"id": cust_id})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+    if customer.get("debt", 0) > 0:
+        raise HTTPException(status_code=400, detail="Pelanggan masih memiliki hutang. Lunasi dahulu.")
+    await db.customers.delete_one({"id": cust_id})
+    return {"message": "Pelanggan dihapus"}
+
+@api_router.post("/customers/{cust_id}/pay-debt")
+async def pay_debt(cust_id: str, payload: DebtPaymentCreate, user: dict = Depends(get_current_user)):
+    customer = await db.customers.find_one({"id": cust_id}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+    current_debt = float(customer.get("debt", 0))
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Jumlah pembayaran harus > 0")
+    if payload.amount > current_debt:
+        raise HTTPException(status_code=400, detail=f"Pembayaran melebihi hutang (Rp {current_debt:,.0f})")
+
+    payment = DebtPayment(
+        customer_id=cust_id,
+        customer_name=customer["name"],
+        amount=payload.amount,
+        method=payload.method,
+        notes=payload.notes or "",
+        cashier_id=user["id"],
+        cashier_name=user["name"],
+    )
+    doc = payment.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.debt_payments.insert_one(doc)
+
+    await db.customers.update_one({"id": cust_id}, {"$inc": {"debt": -payload.amount}})
+    updated = await db.customers.find_one({"id": cust_id}, {"_id": 0})
+    return {"payment": payment.model_dump(), "customer": updated}
+
+@api_router.get("/customers/{cust_id}/transactions")
+async def customer_transactions(cust_id: str, _user: dict = Depends(get_current_user)):
+    txs = await db.transactions.find({"customer_id": cust_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    payments = await db.debt_payments.find({"customer_id": cust_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return {"transactions": txs, "payments": payments}
+
+
 # ============ Reports ============
 @api_router.get("/reports/daily")
 async def daily_report(date: Optional[str] = None, user: dict = Depends(get_current_user)):
@@ -363,7 +492,7 @@ async def daily_report(date: Optional[str] = None, user: dict = Depends(get_curr
     txs = await db.transactions.find(query, {"_id": 0}).to_list(5000)
     total_revenue = sum(t.get("total", 0) for t in txs)
     total_orders = len(txs)
-    by_payment = {"cash": 0, "transfer": 0, "qris": 0}
+    by_payment = {"cash": 0, "transfer": 0, "qris": 0, "debt": 0}
     product_sales = {}
     for t in txs:
         pm = t.get("payment_method", "cash")
@@ -375,6 +504,15 @@ async def daily_report(date: Optional[str] = None, user: dict = Depends(get_curr
             product_sales[key]["quantity"] += it["quantity"]
             product_sales[key]["revenue"] += it["subtotal"]
     top_products = sorted(product_sales.values(), key=lambda x: x["quantity"], reverse=True)[:5]
+
+    # Outstanding debt across all customers (admin only meaningful)
+    debt_query = {}
+    outstanding_debt = 0.0
+    customers_with_debt = 0
+    if user.get("role") == "admin":
+        async for c in db.customers.find({"debt": {"$gt": 0}}, {"_id": 0, "debt": 1}):
+            outstanding_debt += float(c.get("debt", 0))
+            customers_with_debt += 1
 
     # Last 7 days trend (admin only or own)
     trend = []
@@ -394,6 +532,8 @@ async def daily_report(date: Optional[str] = None, user: dict = Depends(get_curr
         "by_payment": by_payment,
         "top_products": top_products,
         "trend": trend,
+        "outstanding_debt": round(outstanding_debt, 2),
+        "customers_with_debt": customers_with_debt,
     }
 
 
@@ -443,7 +583,11 @@ async def seed_data():
     # Indexes
     await db.users.create_index("username", unique=True)
     await db.transactions.create_index([("created_at", -1)])
+    await db.transactions.create_index("customer_id")
     await db.products.create_index("category_id")
+    await db.customers.create_index("name")
+    await db.customers.create_index("phone")
+    await db.debt_payments.create_index([("created_at", -1)])
 
     # Seed admin
     admin_username = os.environ.get("ADMIN_USERNAME", "admin").lower()
@@ -484,37 +628,6 @@ async def seed_data():
             {"username": cashier_username},
             {"$set": {"password_hash": hash_password(cashier_password)}}
         )
-
-    # Seed categories if empty
-    cat_count = await db.categories.count_documents({})
-    cat_id_by_name = {}
-    if cat_count == 0:
-        for c in SAMPLE_CATEGORIES:
-            cat = Category(name=c["name"], icon=c["icon"])
-            doc = cat.model_dump()
-            doc["created_at"] = doc["created_at"].isoformat()
-            await db.categories.insert_one(doc)
-            cat_id_by_name[c["name"]] = cat.id
-        logger.info("Seeded sample categories")
-    else:
-        async for c in db.categories.find({}, {"_id": 0}):
-            cat_id_by_name[c["name"]] = c["id"]
-
-    # Seed products if empty
-    prod_count = await db.products.count_documents({})
-    if prod_count == 0:
-        for p in SAMPLE_PRODUCTS:
-            cid = cat_id_by_name.get(p["category"])
-            if not cid:
-                continue
-            prod = Product(
-                name=p["name"], description=p["description"], price=p["price"],
-                stock=p["stock"], category_id=cid, image_url=p["image_url"],
-            )
-            doc = prod.model_dump()
-            doc["created_at"] = doc["created_at"].isoformat()
-            await db.products.insert_one(doc)
-        logger.info("Seeded sample products")
 
 
 @app.on_event("startup")

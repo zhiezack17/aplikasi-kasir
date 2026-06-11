@@ -89,13 +89,15 @@ export default function History() {
                 <div className="text-xs text-brand-textMuted">{fmtDate(t.created_at)}</div>
               </div>
               <div className="col-span-6 md:col-span-3 text-sm text-brand-textMuted">
-                {t.items.length} item · {t.cashier_name}
+                {t.items.length} item · {t.customer_name ? t.customer_name : t.cashier_name}
               </div>
               <div className="col-span-3 md:col-span-2 text-xs uppercase font-semibold">
                 <span className={`px-2.5 py-1 rounded-full ${
                   t.payment_method === "cash" ? "bg-green-100 text-green-700" :
-                  t.payment_method === "qris" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
-                }`}>{t.payment_method}</span>
+                  t.payment_method === "qris" ? "bg-blue-100 text-blue-700" :
+                  t.payment_method === "debt" ? "bg-red-100 text-red-700" :
+                  "bg-purple-100 text-purple-700"
+                }`}>{t.payment_method === "debt" ? "HUTANG" : t.payment_method}</span>
               </div>
               <div className="col-span-3 md:col-span-3 text-right font-bold text-brand-text">{formatRp(t.total)}</div>
               <div className="hidden md:flex col-span-1 justify-end">
@@ -136,8 +138,13 @@ export default function History() {
                   <span>Total</span><span>{formatRp(detail.total)}</span>
                 </div>
                 <div className="flex justify-between text-brand-textMuted pt-2 border-t border-dashed border-brand-border mt-2">
-                  <span>Pembayaran</span><span className="uppercase font-semibold">{detail.payment_method}</span>
+                  <span>Pembayaran</span><span className="uppercase font-semibold">{detail.payment_method === "debt" ? "HUTANG" : detail.payment_method}</span>
                 </div>
+                {detail.customer_name && (
+                  <div className="flex justify-between text-brand-textMuted">
+                    <span>Pelanggan</span><span className="font-semibold">{detail.customer_name}</span>
+                  </div>
+                )}
                 {detail.cash_received != null && (
                   <>
                     <div className="flex justify-between text-brand-textMuted">

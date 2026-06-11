@@ -23,6 +23,7 @@ export default function POS() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [activeCat, setActiveCat] = useState("all");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState([]); // {product_id, product_name, price, quantity, image_url}
@@ -30,16 +31,24 @@ export default function POS() {
   const [payOpen, setPayOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [cashReceived, setCashReceived] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [quickCustOpen, setQuickCustOpen] = useState(false);
+  const [quickCustForm, setQuickCustForm] = useState({ name: "", phone: "", address: "", notes: "" });
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [p, c] = await Promise.all([api.get("/products"), api.get("/categories")]);
+      const [p, c, cu] = await Promise.all([
+        api.get("/products"),
+        api.get("/categories"),
+        api.get("/customers"),
+      ]);
       setProducts(p.data.filter((x) => x.active !== false));
       setCategories(c.data);
+      setCustomers(cu.data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -109,6 +118,7 @@ export default function POS() {
     if (cart.length === 0) return;
     setPaymentMethod("cash");
     setCashReceived("");
+    setSelectedCustomerId("");
     setPayOpen(true);
     setMobileCartOpen(false);
   };
@@ -127,15 +137,30 @@ export default function POS() {
       if (paymentMethod === "cash") {
         body.cash_received = Number(cashReceived || 0);
       }
+      if (paymentMethod === "debt") {
+        body.customer_id = selectedCustomerId;
+      }
       const { data } = await api.post("/transactions", body);
       setReceipt(data);
       setCart([]);
       setPayOpen(false);
-      await loadData(); // refresh stock
+      await loadData(); // refresh stock + customers
     } catch (e) {
       alert(formatApiError(e));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const submitQuickCustomer = async () => {
+    try {
+      const { data } = await api.post("/customers", quickCustForm);
+      setCustomers((prev) => [...prev, data]);
+      setSelectedCustomerId(data.id);
+      setQuickCustOpen(false);
+      setQuickCustForm({ name: "", phone: "", address: "", notes: "" });
+    } catch (e) {
+      alert(formatApiError(e));
     }
   };
 
@@ -313,16 +338,17 @@ export default function POS() {
             </div>
 
             <div className="text-xs uppercase tracking-wider font-bold text-brand-textMuted mb-2">Metode Pembayaran</div>
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="grid grid-cols-4 gap-2 mb-4">
               {[
                 { id: "cash", label: "Tunai" },
                 { id: "transfer", label: "Transfer" },
                 { id: "qris", label: "QRIS" },
+                { id: "debt", label: "Hutang" },
               ].map((m) => (
                 <button
                   key={m.id}
                   onClick={() => setPaymentMethod(m.id)}
-                  className={`h-14 rounded-xl font-semibold border-2 transition ${
+                  className={`h-14 rounded-xl font-semibold border-2 transition text-sm ${
                     paymentMethod === m.id
                       ? "bg-brand-primary text-white border-brand-primary shadow-button-glow"
                       : "bg-brand-surface text-brand-text border-brand-border hover:border-brand-primary"
@@ -385,16 +411,111 @@ export default function POS() {
                 <div className="mt-2 text-xs text-brand-textMuted">Konfirmasi pembayaran sebelum menyelesaikan.</div>
               </div>
             )}
+
+            {paymentMethod === "debt" && (
+              <div className="mb-4">
+                <label className="text-xs uppercase tracking-wider font-bold text-brand-textMuted block mb-2">
+                  Pilih Pelanggan
+                </label>
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => setSelectedCustomerId(e.target.value)}
+                  className="w-full h-12 px-4 rounded-xl border border-brand-border bg-brand-surface2 focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
+                  data-testid="debt-customer-select"
+                >
+                  <option value="">-- Pilih pelanggan --</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.phone ? ` (${c.phone})` : ""}{c.debt > 0 ? ` · Hutang ${formatRp(c.debt)}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setQuickCustOpen(true)}
+                  className="mt-2 text-sm text-brand-primary hover:underline font-semibold"
+                  data-testid="quick-add-customer-btn"
+                >
+                  + Tambah pelanggan baru
+                </button>
+                {selectedCustomerId && (() => {
+                  const c = customers.find((x) => x.id === selectedCustomerId);
+                  if (!c) return null;
+                  const newDebt = (c.debt || 0) + total;
+                  return (
+                    <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3 text-sm">
+                      <div className="flex justify-between text-brand-textMuted">
+                        <span>Hutang saat ini</span><span>{formatRp(c.debt)}</span>
+                      </div>
+                      <div className="flex justify-between text-brand-textMuted">
+                        <span>+ Transaksi ini</span><span>{formatRp(total)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-red-700 border-t border-red-200 mt-1 pt-1">
+                        <span>Total hutang baru</span><span>{formatRp(newDebt)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
           <DialogFooter className="px-6 pb-6">
             <button
               onClick={submitPayment}
-              disabled={submitting || (paymentMethod === "cash" && Number(cashReceived) < total)}
+              disabled={
+                submitting ||
+                (paymentMethod === "cash" && Number(cashReceived) < total) ||
+                (paymentMethod === "debt" && !selectedCustomerId)
+              }
               className="w-full h-14 rounded-xl bg-brand-primary hover:bg-brand-primaryHover text-white font-bold transition shadow-button-glow disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               data-testid="confirm-payment-btn"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {submitting ? "Memproses..." : `Bayar ${formatRp(total)}`}
+              {submitting ? "Memproses..." : paymentMethod === "debt" ? `Catat Hutang ${formatRp(total)}` : `Bayar ${formatRp(total)}`}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Add Customer Dialog */}
+      <Dialog open={quickCustOpen} onOpenChange={setQuickCustOpen}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold tracking-tight">Tambah Pelanggan Baru</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <input
+              value={quickCustForm.name}
+              onChange={(e) => setQuickCustForm({ ...quickCustForm, name: e.target.value })}
+              placeholder="Nama"
+              className="w-full h-11 px-4 rounded-xl border border-brand-border bg-brand-surface2 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+              data-testid="quick-cust-name"
+            />
+            <input
+              value={quickCustForm.phone}
+              onChange={(e) => setQuickCustForm({ ...quickCustForm, phone: e.target.value })}
+              placeholder="No. HP"
+              className="w-full h-11 px-4 rounded-xl border border-brand-border bg-brand-surface2 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+              data-testid="quick-cust-phone"
+            />
+            <textarea
+              value={quickCustForm.address}
+              onChange={(e) => setQuickCustForm({ ...quickCustForm, address: e.target.value })}
+              rows={2}
+              placeholder="Alamat (opsional)"
+              className="w-full px-4 py-2.5 rounded-xl border border-brand-border bg-brand-surface2 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+            />
+          </div>
+          <DialogFooter>
+            <button onClick={() => setQuickCustOpen(false)} className="h-11 px-5 rounded-xl bg-brand-surface2 font-semibold">
+              Batal
+            </button>
+            <button
+              onClick={submitQuickCustomer}
+              disabled={!quickCustForm.name}
+              className="h-11 px-6 rounded-xl bg-brand-primary text-white font-semibold disabled:opacity-50"
+              data-testid="quick-cust-save-btn"
+            >
+              Tambah
             </button>
           </DialogFooter>
         </DialogContent>
@@ -442,8 +563,14 @@ export default function POS() {
                 </div>
                 <div className="flex justify-between text-brand-textMuted pt-2 border-t border-dashed border-brand-border">
                   <span>Metode</span>
-                  <span className="uppercase font-semibold">{receipt.payment_method}</span>
+                  <span className="uppercase font-semibold">{receipt.payment_method === "debt" ? "HUTANG" : receipt.payment_method}</span>
                 </div>
+                {receipt.customer_name && (
+                  <div className="flex justify-between text-brand-textMuted">
+                    <span>Pelanggan</span>
+                    <span className="font-semibold text-brand-text">{receipt.customer_name}</span>
+                  </div>
+                )}
                 {receipt.cash_received != null && (
                   <>
                     <div className="flex justify-between text-brand-textMuted">

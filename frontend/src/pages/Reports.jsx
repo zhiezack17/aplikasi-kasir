@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, TrendingUp, Receipt, Banknote, CreditCard, QrCode, Trophy } from "lucide-react";
+import { Loader2, TrendingUp, Receipt, Banknote, CreditCard, QrCode, Trophy, Wallet } from "lucide-react";
 import api, { formatRp } from "@/lib/api";
 import {
   ResponsiveContainer,
@@ -56,6 +56,24 @@ export default function Reports() {
             <KPI icon={Receipt} label="Total Pesanan" value={data.total_orders} color="bg-brand-secondary" />
             <KPI icon={Banknote} label="Tunai" value={formatRp(data.by_payment.cash || 0)} color="bg-green-600" />
             <KPI icon={QrCode} label="QRIS + Transfer" value={formatRp((data.by_payment.qris || 0) + (data.by_payment.transfer || 0))} color="bg-blue-600" />
+          </div>
+
+          {/* Debt KPIs */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+            <KPI
+              icon={Wallet}
+              label="Total Hutang Outstanding"
+              value={formatRp(data.outstanding_debt || 0)}
+              color="bg-red-600"
+              testid="kpi-outstanding-debt"
+            />
+            <KPI
+              icon={Wallet}
+              label="Pelanggan dengan Hutang"
+              value={data.customers_with_debt || 0}
+              color="bg-orange-500"
+              testid="kpi-customers-with-debt"
+            />
           </div>
 
           {/* Trend chart */}
@@ -121,9 +139,9 @@ export default function Reports() {
   );
 }
 
-function KPI({ icon: Icon, label, value, color }) {
+function KPI({ icon: Icon, label, value, color, testid }) {
   return (
-    <div className="bg-brand-surface rounded-2xl border border-brand-border p-4 md:p-5 shadow-card-subtle">
+    <div className="bg-brand-surface rounded-2xl border border-brand-border p-4 md:p-5 shadow-card-subtle" data-testid={testid}>
       <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center mb-3`}>
         <Icon className="w-5 h-5 text-white" />
       </div>
